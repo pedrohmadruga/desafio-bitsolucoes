@@ -5,6 +5,7 @@ import helmet from "helmet";
 import { env } from "./config/env";
 import { errorHandler } from "./middlewares/errorHandler";
 import { notFound } from "./middlewares/notFound";
+import { authRoutes } from "./modules/auth/auth.routes";
 
 const app = express();
 
@@ -22,7 +23,9 @@ app.get("/api/health", (_req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
-// Rotas dos módulos (auth, categories, requests, dashboard) — montar aqui
+app.use("/api/auth", authRoutes);
+
+// Rotas dos módulos (categories, requests, dashboard) — montar aqui
 
 app.use(notFound);
 app.use(errorHandler);
