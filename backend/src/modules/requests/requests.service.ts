@@ -3,7 +3,7 @@ import { prisma } from "../../database/prisma";
 import { NotFoundError } from "../../shared/errors";
 import * as requestsRepository from "./requests.repository";
 import { toRequestResponse } from "./requests.mapper";
-import type { CreateRequestInput } from "./requests.schemas";
+import type { CreateRequestInput, ListRequestsQuery } from "./requests.schemas";
 
 async function assertCategoryExists(categoryId: number) {
   const category = await prisma.category.findUnique({
@@ -38,4 +38,19 @@ export async function getById(id: number) {
   }
 
   return toRequestResponse(request);
+}
+
+export async function list(filters: ListRequestsQuery) {
+  const { items, total } = await requestsRepository.list(filters);
+  const totalPages = total === 0 ? 0 : Math.ceil(total / filters.pageSize);
+
+  return {
+    data: items.map(toRequestResponse),
+    meta: {
+      page: filters.page,
+      pageSize: filters.pageSize,
+      total,
+      totalPages,
+    },
+  };
 }

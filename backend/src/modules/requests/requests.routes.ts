@@ -7,4 +7,5 @@ export const requestsRoutes = Router();
 requestsRoutes.use(authenticate);
 
 requestsRoutes.post("/", requestsController.create);
+requestsRoutes.get("/", requestsController.list);
 requestsRoutes.get("/:id", requestsController.getById);

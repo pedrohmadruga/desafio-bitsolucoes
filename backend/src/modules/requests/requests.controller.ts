@@ -1,6 +1,10 @@
 import type { Request, RequestHandler } from "express";
 import { UnauthorizedError } from "../../shared/errors";
-import { createRequestSchema, idParamSchema } from "./requests.schemas";
+import {
+  createRequestSchema,
+  idParamSchema,
+  listRequestsQuerySchema,
+} from "./requests.schemas";
 import * as requestsService from "./requests.service";
 
 function getAuthenticatedUserId(req: Request): number {
@@ -15,6 +19,12 @@ export const create: RequestHandler = async (req, res) => {
   const dto = createRequestSchema.parse(req.body);
   const request = await requestsService.create(userId, dto);
   res.status(201).json({ request });
+};
+
+export const list: RequestHandler = async (req, res) => {
+  const filters = listRequestsQuerySchema.parse(req.query);
+  const result = await requestsService.list(filters);
+  res.status(200).json(result);
 };
 
 export const getById: RequestHandler = async (req, res) => {

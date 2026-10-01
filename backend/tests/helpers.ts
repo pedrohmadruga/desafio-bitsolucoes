@@ -58,3 +58,32 @@ export async function loginAs(user: { username: string; password: string }) {
 
   return agent;
 }
+
+type CreateServiceRequestInput = {
+  title: string;
+  description?: string;
+  categoryId: number;
+  requesterId: number;
+  status?: "ABERTO" | "EM_ATENDIMENTO" | "CONCLUIDO";
+  createdAt?: Date;
+};
+
+export async function createServiceRequest({
+  title,
+  description = "Descrição detalhada da solicitação de teste.",
+  categoryId,
+  requesterId,
+  status = "ABERTO",
+  createdAt,
+}: CreateServiceRequestInput) {
+  return prisma.serviceRequest.create({
+    data: {
+      title,
+      description,
+      categoryId,
+      requesterId,
+      status,
+      ...(createdAt && { createdAt }),
+    },
+  });
+}
