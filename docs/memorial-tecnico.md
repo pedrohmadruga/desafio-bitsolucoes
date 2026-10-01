@@ -21,19 +21,20 @@ Organizei o documento assim: tecnologias e justificativas; decisões de arquitet
 Stack definida na fase de planejamento. 
 
 
-| Categoria            | Tecnologia                               | Situação                                   |
+| Categoria            | Tecnologia                               | Situação / versão                          |
 | -------------------- | ---------------------------------------- | ------------------------------------------ |
+| Runtime              | Node.js                                  | **24+** recomendado (`engines`: 20.19+ / 22.12+ / 24+) |
 | Linguagem            | TypeScript (backend e frontend)          | Definida                                   |
-| Backend              | Node.js + Express                        | Definida                                   |
+| Backend              | Express                                  | Definida                                   |
 | Frontend             | React + Vite + React Router              | Definida                                   |
-| Banco de dados       | PostgreSQL                               | Definida                                   |
-| ORM / acesso a dados | Prisma (+ scripts SQL entregues à parte) | Definida                                   |
+| Banco de dados       | PostgreSQL                               | 16 (Compose)                               |
+| ORM / acesso a dados | Prisma (+ scripts SQL entregues à parte) | **7.10.0** (+ `@prisma/adapter-pg`, `pg`)  |
 | Validação            | Zod                                      | Definida                                   |
 | Autenticação         | JWT em cookie `httpOnly` + bcrypt        | Definida                                   |
 | Estilização          | Tailwind CSS                             | Definida                                   |
 | Cliente HTTP         | axios (`withCredentials`)                | Definida                                   |
 | Testes (backend)     | Vitest + Supertest                       | Definida                                   |
-| Containerização      | Docker + Docker Compose                  | Definida (Compose ainda não escrito)       |
+| Containerização      | Docker + Docker Compose                  | `db` no Compose; API/web depois            |
 | CI                   | GitHub Actions                           | Pasta reservada, workflow ainda não criado |
 
 
@@ -54,6 +55,7 @@ Stack definida na fase de planejamento.
 - **Benefícios para o cenário:** middleware nativo para autenticação, erros e rate limit no login; ecossistema maduro para JWT, cookies e validação.
 - **Vantagens em relação a alternativas:** NestJS traria módulos e DI “de fábrica”, mas também mais cerimônia e curva para um prazo de poucos dias. Express ainda é a referência mais comum em material e em revisões de código júnior, o que facilita a leitura por quem avaliar. Um backend em outra stack quebraria a unidade TypeScript ponta a ponta.
 - **Impacto:** produtividade alta no início e a organização em camadas fica sob minha responsabilidade. Por isso documentei a estrutura de pastas antes de codar.
+- **Versão do Node:** documentei o requisito em `engines` no `package.json` do backend (Node 20.19+, 22.12+ ou 24+). O Prisma 7 exige isso; o ambiente local estava em 20.18.2 e o `npm install` falhava no preinstall. Subir o runtime foi pré-requisito para a ORM na versão que adotei.
 
 ### 3.3 React + Vite + React Router
 
@@ -69,12 +71,14 @@ Stack definida na fase de planejamento.
 - **Vantagens em relação a alternativas:** MySQL também serviria. PostgreSQL lida bem com enums nativos e com a stack Prisma/Node sem atrito. SQLite simplificaria o setup local, mas enfraquece o discurso de ambiente próximo de produção e o Compose com serviço `db` dedicado. NoSQL não casa com o dicionário de dados e os scripts SQL pedidos.
 - **Impacto:** migrations reproduzíveis e base sólida para o dicionário de dados; exige subir o serviço (Docker) cedo para não deixar a persistência para o fim.
 
-### 3.5 Prisma (+ SQL à parte)
+### 3.5 Prisma (+ SQL à parte) — v7.10.0
 
 - **Motivo da escolha:** preciso de schema versionado, tipagem das queries e seed de demonstração, sem escrever na mão todo o mapeamento objeto-relacional.
 - **Benefícios para o cenário:** `migrate deploy` no container alinha o banco ao código; o client tipado reduz erro em joins de categoria/solicitante; consigo entregar `database/schema.sql` gerado a partir das migrations para cumprir o requisito de scripts SQL.
-- **Vantagens em relação a alternativas:** SQL puro dá controle total, mas aumenta código repetitivo e risco de drift entre documentação e banco. TypeORM/Sequelize são opções, mas a tipagem do Prisma no fluxo TypeScript costuma ser mais previsível no dia a dia. 
+- **Vantagens em relação a alternativas:** SQL puro dá controle total, mas aumenta código repetitivo e risco de drift entre documentação e banco. TypeORM/Sequelize são opções, mas a tipagem do Prisma no fluxo TypeScript costuma ser mais previsível no dia a dia.
 - **Impacto:** ganho de velocidade e rastreabilidade de schema no Git.
+- **Por que Prisma 7 (e não 6 nem 8 RC):** tentei o caminho clássico (URL no `schema.prisma`, na linha do Prisma 6), mas a ferramenta/docs atuais e o language server do editor já tratam `url` no schema como inválido — a conexão de migrate vai para `prisma.config.ts`, e o `PrismaClient` em runtime recebe um **driver adapter** (`@prisma/adapter-pg` + `pg`). Fixei **7.10.0** (estável) nos dois pacotes (`prisma` e `@prisma/client`) para não misturar major. Evitei o **Prisma 8 RC**: o `prisma init` da RC instalou pastas de “skills” para agents (`.agents`, `.claude`, `.cursor`, `.devin`) e um `postinstall` que não agrega ao produto; para um desafio com prazo curto, RC é risco desnecessário.
+- **Como ficou no projeto:** `prisma/schema.prisma` só declara `provider = "postgresql"`; `prisma.config.ts` lê `DATABASE_URL`; `src/database/prisma.ts` instancia o client com o adapter. Quem for rodar local precisa de Node na faixa do `engines` do backend.
 
 ### 3.6 Zod
 
@@ -161,7 +165,7 @@ Isso atende o critério de “uso adequado de camadas” e deixa os testes de re
 
 Três entidades principais: `User`, `Category`, `ServiceRequest` (nome do model evita colisão com `Request` do Express/DOM). Categorias estão em tabela própria, pois dessa maneira, incluir categoria nova não exige alterar enum de código.
 
-Detalhamento de campos, índices e transições estão desenhados no Excalidraw e serão refletidos no schema Prisma.
+Detalhamento de campos, índices e transições está no Excalidraw e já foi refletido em `backend/prisma/schema.prisma` (models `User`, `Category`, `ServiceRequest` e enum `RequestStatus`).
 
 ### 4.5 Autenticação e comunicação front ↔ back
 
@@ -240,7 +244,7 @@ HTTPS obrigatório e cookie `secure`; segredos em gerenciador; logs estruturados
 
 ## 9. Conclusão
 
-Até aqui fechei o **esqueleto do repositório**, a **stack**, as **regras de negócio omisas no PDF**, o **mapa visual** (modelagem, casos de uso, endpoints) e a **política de o que não versionar**. O próximo passo é subir o PostgreSQL via Compose e scaffoldar o backend TypeScript — onde estas decisões começam a virar código.
+Até aqui fechei o **esqueleto do repositório**, a **stack** (com Prisma 7.10 e Node na faixa exigida pela ORM), as **regras de negócio omisas no PDF**, o **mapa visual**, o **Compose do Postgres**, o **scaffold inicial do backend** (`env` com Zod, `schema.prisma`, client com adapter) e a **política de o que não versionar**. O próximo passo é migration/seed e a aplicação Express (auth e demais módulos).
 
 ---
 
@@ -251,7 +255,16 @@ Até aqui fechei o **esqueleto do repositório**, a **stack**, as **regras de ne
 - Li o edital e montei o plano de desenvolvimento em etapas diárias (prazo oficial 05/10; meta pessoal 04/10).
 - Criei o memorial como documento vivo e o board Excalidraw com três blocos apenas: modelagem, casos de uso e endpoints (evitei diagramar stack/containers no mesmo quadro para não misturar níveis).
 - Adotei monorepo com `backend/`, `frontend/`, `database/`, `docs/` e `.github/workflows/`.
-- Populei o `.gitignore` para excluir dependências, builds, cobertura, logs e `.env` reais, preservando examples.
+- Populei o `.gitignore` para excluir dependências, builds, cobertura, logs e `.env` reais, preservando examples; incluí pastas de agents (`.agents`, `.claude`, `.cursor`, `.devin`).
 - Reservei GitHub Actions como diferencial opcional; não depende disso a entrega mínima.
 - Fechei a stack (TypeScript, Express, React/Vite, PostgreSQL, Prisma, Zod, JWT httpOnly, Docker Compose) e as regras de negócio da seção 5 deste memorial.
+- Compose inicial só com `db` (PostgreSQL 16) e `.env.example` na raiz; scaffold do backend com `tsconfig`, `src/config/env.ts` (Zod) e `.env` local.
+
+### 01/10/2026 — Prisma 7.10 e requisito de Node
+
+- O `prisma init` na linha **8 RC** gerou config de skills para agents em vez do fluxo clássico de schema; descartei RC e pastas geradas.
+- Passei por Prisma **6.19** (URL no schema), mas o modelo atual da ferramenta/editor rejeita `url` no `schema.prisma`.
+- Adotei **Prisma 7.10.0** estável: URL em `prisma.config.ts`, client com `@prisma/adapter-pg` + `pg` em `src/database/prisma.ts`; `schema.prisma` só com provider e models.
+- Exigi Node na faixa do Prisma 7 (20.19+ / 22.12+ / 24+) porque o install falhava em 20.18.2; documentei isso em `engines` no `package.json` do backend.
+- Motivo resumido: alinhar à API oficial da v7, evitar RC instável e ter ambiente reproduzível para quem clonar o repo.
 

@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RequestStatus {
+  ABERTO
+  EM_ATENDIMENTO
+  CONCLUIDO
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique @db.VarChar(50)
+  passwordHash String   @map("password_hash")
+  name         String   @db.VarChar(100)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  requests ServiceRequest[]
+
+  @@map("users")
+}
+
+model Category {
+  id   Int    @id @default(autoincrement())
+  name String @unique @db.VarChar(50)
+
+  requests ServiceRequest[]
+
+  @@map("categories")
+}
+
+model ServiceRequest {
+  id          Int           @id @default(autoincrement())
+  title       String        @db.VarChar(150)
+  description String        @db.Text
+  status      RequestStatus @default(ABERTO)
+  categoryId  Int           @map("category_id")
+  requesterId Int           @map("requester_id")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  category  Category @relation(fields: [categoryId], references: [id])
+  requester User     @relation(fields: [requesterId], references: [id])
+
+  @@index([status])
+  @@index([categoryId])
+  @@index([createdAt])
+  @@map("service_requests")
+}

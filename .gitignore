@@ -29,12 +29,16 @@ frontend/dist/
 .DS_Store
 Thumbs.db
 
-# Editores / IDE
+# Editores / IDE / agents
 .idea/
 .vscode/*
 !.vscode/extensions.json
 *.swp
 *.swo
+.agents/
+.claude/
+.cursor/
+.devin/
 
 # Docker / temporários
 *.pid
