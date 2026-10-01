@@ -1,0 +1,43 @@
+# Dependências
+node_modules/
+
+# Build / saída
+dist/
+build/
+*.tsbuildinfo
+
+# Ambiente e segredos
+.env
+.env.*
+!.env.example
+!.env.*.example
+.env.test
+
+# Logs e cobertura de testes
+*.log
+npm-debug.log*
+coverage/
+.nyc_output/
+
+# Prisma (client gerado local, se aplicável)
+# backend/node_modules/.prisma é coberto por node_modules/
+
+# Vite / frontend
+frontend/dist/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Editores / IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# Docker / temporários
+*.pid
+*.seed
+tmp/
+temp/

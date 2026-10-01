@@ -1,0 +1,257 @@
+# MEMORIAL TÉCNICO DE DESENVOLVIMENTO
+
+Portal de Solicitações Internas — Processo seletivo bit Soluções (DEV Jr. 09/2026)
+
+Documento vivo. Atualizo conforme avanço no desenvolvimento; as seções abaixo refletem o que já foi decidido e o que ainda está em aberto.
+
+---
+
+## 1. Introdução
+
+Este memorial registra o raciocínio por trás das escolhas técnicas e de negócio do Portal de Solicitações Internas, mini-projeto da segunda etapa do processo seletivo.
+
+O sistema permite que colaboradores autenticados registrem demandas internas (TI, RH, Compras, etc.), acompanhem o andamento e consultem indicadores simples. A entrega prevê backend, frontend, persistência em banco SQL, documentação de execução e este memorial.
+
+Organizei o documento assim: tecnologias e justificativas; decisões de arquitetura e de negócio; e um registro cronológico do que fui decidindo no caminho. Ainda não há código de aplicação — o trabalho até aqui foi de estrutura do repositório, desenho da solução e alinhamento do escopo.
+
+---
+
+## 2. Tecnologias utilizadas
+
+Stack definida na fase de planejamento. 
+
+
+| Categoria            | Tecnologia                               | Situação                                   |
+| -------------------- | ---------------------------------------- | ------------------------------------------ |
+| Linguagem            | TypeScript (backend e frontend)          | Definida                                   |
+| Backend              | Node.js + Express                        | Definida                                   |
+| Frontend             | React + Vite + React Router              | Definida                                   |
+| Banco de dados       | PostgreSQL                               | Definida                                   |
+| ORM / acesso a dados | Prisma (+ scripts SQL entregues à parte) | Definida                                   |
+| Validação            | Zod                                      | Definida                                   |
+| Autenticação         | JWT em cookie `httpOnly` + bcrypt        | Definida                                   |
+| Estilização          | Tailwind CSS                             | Definida                                   |
+| Cliente HTTP         | axios (`withCredentials`)                | Definida                                   |
+| Testes (backend)     | Vitest + Supertest                       | Definida                                   |
+| Containerização      | Docker + Docker Compose                  | Definida (Compose ainda não escrito)       |
+| CI                   | GitHub Actions                           | Pasta reservada, workflow ainda não criado |
+
+
+---
+
+## 3. Justificativa técnica
+
+### 3.1 TypeScript (backend e frontend)
+
+- **Motivo da escolha:** o domínio tem regras explícitas (status, dono da solicitação, filtros, paginação). Tipagem estática reduz inconsistência entre o que a API devolve e o que a interface consome, e isso importa num projeto com prazo curto, em que regressões custam caro.
+- **Benefícios para o cenário:** contratos mais claros entre camadas; autocompletar e erros em tempo de compilação em vez de falha só no navegador ou no Postman.
+- **Vantagens em relação a alternativas:** JavaScript puro seria mais rápido de “começar”, mas em validações e DTOs eu pagaria depois com checagens manuais. Outras linguagens (Python, PHP, Java) funcionariam, mas TypeScript me permite manter a mesma linguagem e o mesmo modelo mental nos dois lados da aplicação.
+- **Impacto:** menos atrito na manutenção e na evolução dos endpoints. O custo inicial é configurar `tsconfig` e o pipeline de build, o que compensa já nas primeiras rotas.
+
+### 3.2 Node.js + Express
+
+- **Motivo da escolha:** a API é REST, CRUD e regras de negócio modestas. Express cobre isso sem impor uma estrutura monolítica, de modo que eu possa montar as camadas (routes → controller → service → repository) do jeito que o escopo pede.
+- **Benefícios para o cenário:** middleware nativo para autenticação, erros e rate limit no login; ecossistema maduro para JWT, cookies e validação.
+- **Vantagens em relação a alternativas:** NestJS traria módulos e DI “de fábrica”, mas também mais cerimônia e curva para um prazo de poucos dias. Express ainda é a referência mais comum em material e em revisões de código júnior, o que facilita a leitura por quem avaliar. Um backend em outra stack quebraria a unidade TypeScript ponta a ponta.
+- **Impacto:** produtividade alta no início e a organização em camadas fica sob minha responsabilidade. Por isso documentei a estrutura de pastas antes de codar.
+
+### 3.3 React + Vite + React Router
+
+- **Motivo da escolha:** a interface tem formulários, listagem com filtros, detalhe e dashboard. Componentização ajuda a não repetir input, badge de status, paginação e estados de loading/erro/vazio.
+- **Benefícios para o cenário:** Vite sobe o ambiente de desenvolvimento rápido e o build de produção é direto para servir via nginx depois. React Router resolve login, rotas protegidas e navegação entre as telas pedidas no edital.
+- **Vantagens em relação a alternativas:** Next.js adicionaria SSR/SSG que este portal interno não exige. Permaneci no React pela familiaridade e pela quantidade de padrões estáveis para auth client-side e formulários.
+- **Impacto:** ciclo de feedback curto no frontend.
+
+### 3.4 PostgreSQL
+
+- **Motivo da escolha:** o edital pede banco SQL, listagens filtráveis e indicadores agregados. O modelo relacional encaixa em usuários, categorias e solicitações com FKs e integridade de status.
+- **Benefícios para o cenário:** enums, índices em colunas de filtro (`status`, `category_id`, `created_at`) e `ILIKE` para busca textual no título.
+- **Vantagens em relação a alternativas:** MySQL também serviria. PostgreSQL lida bem com enums nativos e com a stack Prisma/Node sem atrito. SQLite simplificaria o setup local, mas enfraquece o discurso de ambiente próximo de produção e o Compose com serviço `db` dedicado. NoSQL não casa com o dicionário de dados e os scripts SQL pedidos.
+- **Impacto:** migrations reproduzíveis e base sólida para o dicionário de dados; exige subir o serviço (Docker) cedo para não deixar a persistência para o fim.
+
+### 3.5 Prisma (+ SQL à parte)
+
+- **Motivo da escolha:** preciso de schema versionado, tipagem das queries e seed de demonstração, sem escrever na mão todo o mapeamento objeto-relacional.
+- **Benefícios para o cenário:** `migrate deploy` no container alinha o banco ao código; o client tipado reduz erro em joins de categoria/solicitante; consigo entregar `database/schema.sql` gerado a partir das migrations para cumprir o requisito de scripts SQL.
+- **Vantagens em relação a alternativas:** SQL puro dá controle total, mas aumenta código repetitivo e risco de drift entre documentação e banco. TypeORM/Sequelize são opções, mas a tipagem do Prisma no fluxo TypeScript costuma ser mais previsível no dia a dia. 
+- **Impacto:** ganho de velocidade e rastreabilidade de schema no Git.
+
+### 3.6 Zod
+
+- **Motivo da escolha:** validação de body, query e params não pode ficar só no TypeScript (pois tipos somem em runtime). Zod valida na porta de entrada da API e ainda infere tipos TypeScript a partir do schema.
+- **Benefícios para o cenário:** mensagens de campo (`title`, `categoryId`, datas do filtro) alinhadas ao formato de erro único da API; o mesmo tipo de schema pode espelhar regras no frontend (formulário).
+- **Vantagens em relação a alternativas:** Joi e Yup resolvem validação, mas a inferência de tipos com Zod encaixa melhor no TypeScript. Validar “na mão” em cada controller escala mal e diverge entre rotas.
+- **Impacto:** contrato de entrada consistente; um pouco de código a mais nos schemas, mas menos discussão sobre “de quem é a culpa” quando o client manda lixo.
+
+### 3.7 JWT em cookie httpOnly + bcrypt
+
+- **Motivo da escolha:** o edital pede login, sessão e logout, com acesso só para autenticados. JWT com expiração modela a sessão sem armazenar estado de sessão no servidor neste escopo; `httpOnly` impede leitura do token via JavaScript no browser, eunquanto o bcrypt cobre o hash das senhas.
+- **Benefícios para o cenário:** logout = limpar cookie; `GET /auth/me` restaura a sessão após F5; a API continua stateless em relação à sessão.
+- **Vantagens em relação a alternativas:** sessão server-side (Redis/memória) seria mais “clássica”, mas adiciona infraestrutura. Token só no `Authorization` header funciona, porém o front precisaria guardar o JWT em lugar acessível ao JS. OAuth/SSO seria excesso para usuários demo em seed.
+- **Impacto:** implementação enxuta e alinhada a segurança básica pedida na avaliação. Em produção eu endureceria HTTPS, flag `secure` e rotação/refresh.
+
+### 3.8 Tailwind CSS
+
+- **Motivo da escolha:** o diferencial de responsividade pede ajuste rápido mobile/desktop sem montar um design do zero.
+- **Benefícios para o cenário:** utilitários no markup aceleram listagem, formulários e dashboard; mobile-first fica natural (`flex-col` → `md:flex-row`).
+- **Vantagens em relação a alternativas:** CSS Modules isolam escopo, mas custam mais tempo em layout responsivo. UI kits (MUI, etc.) aceleram, porém pesam no visual genérico e no bundle. Para um portal interno pequeno, Tailwind me deixa no controle sem reinventar grid e espaçamento.
+- **Impacto:** entrega visual aceitável no prazo; preciso de disciplina para não espalhar classes demais (componentes de UI reutilizáveis).
+
+### 3.9 axios
+
+- **Motivo da escolha:** o front precisa enviar cookies de sessão (`withCredentials`) e tratar 401 de forma centralizada.
+- **Benefícios para o cenário:** um client único para auth, requests, categories e dashboard; menos código repetido de `fetch`.
+- **Vantagens em relação a alternativas:** `fetch` nativo basta, mas interceptors e API de erro são mais manuais. Em escopo deste tamanho, axios reduz atrito sem ser dependência pesada demais.
+- **Impacto:** comportamento de sessão previsível no SPA; acoplamento leve a uma lib HTTP (aceitável).
+
+### 3.10 Vitest + Supertest
+
+- **Motivo da escolha:** regras de negócio (dono, status Aberto, transições) são exatamente o tipo de coisa que quebra sem teste. Quero poucos testes, nos fluxos que importam, contra um Postgres real de teste.
+- **Benefícios para o cenário:** Vitest é rápido e familiar a quem já viu Jest, enquanto Supertest exercita a API HTTP de ponta a ponta (cookie, status code, body de erro).
+- **Vantagens em relação a alternativas:** Jest também serviria, mas Vitest integra melhor com ESM/Vite e é mais leve de configurar hoje. Testes só unitários com mock de Prisma não pegariam regressão de middleware e serialização, por isso priorizo integração na API.
+- **Impacto:** confiança para refatorar services a custo de manter banco/schema de teste no Compose.
+
+### 3.11 Docker + Docker Compose
+
+- **Motivo da escolha:** o edital exige execução sem adaptações. Compose com `db`, `api` e `web` é o caminho mais honesto para quem for avaliar clonar e subir.
+- **Benefícios para o cenário:** mesmo Postgres para todos; migrations/seed no start da API; frontend estático atrás de nginx com proxy `/api`.
+- **Vantagens em relação a alternativas:** instruções só com “instale Node 22, Postgres 16, configure PATH…” falham em máquinas diferente.
+- **Impacto:** investir em conteinerização no dia 1 evita surpresa na entrega. Dockerfile multi-stage e variáveis de ambiente precisam estar corretos desde o começo.
+
+### 3.12 GitHub Actions (diferencial, ainda não implementado)
+
+- **Motivo da escolha:** CI (lint, typecheck, testes, build) é diferencial do edital, não requisito. Reservei `.github/workflows/` na estrutura inicial para não misturar isso depois com pressa.
+- **Benefícios para o cenário:** se sobrar tempo, o avaliador vê checagem automática no push. Se não sobrar, a pasta vazia (com `.gitkeep`) não atrapalha a entrega.
+- **Vantagens em relação a alternativas:** Actions é o padrão no GitHub, onde o repositório deve ficar.
+- **Impacto:** baixo por enquanto; prioridade menor que app funcionando, Docker, README e este memorial.
+
+---
+
+## 4. Justificativa conceitual
+
+### 4.1 Estrutura geral da aplicação
+
+Optei por três processos distintos no Compose: banco, API e interface. O navegador fala com o frontend; em produção containerizada, o nginx serve o build e encaminha `/api` para o backend. O backend é a única porta de escrita/leitura no PostgreSQL.
+
+Antes de codar, registrei em `docs/system-design.excalidraw` a modelagem, os casos de uso e a superfície de endpoints. Não foi um exercício estético: serviu para mapear o que autenticar, o que filtrar, o que o dashboard agrega e para ter material visual que posso reaproveitar na documentação.
+
+### 4.2 Organização do repositório (monorepo)
+
+Coloquei backend e frontend no **mesmo repositório Git**, em pastas `backend/` e `frontend/`, cada uma com seu próprio `package.json` quando forem scaffoldadas.
+
+Nomeei `backend` e `frontend` de propósito. `api`/`web` também funcionaria e alinha aos nomes dos serviços no Compose. mantive `backend`/`frontend` por legibilidade.
+
+Pastas adicionais já criadas:
+
+- `database/` — scripts SQL e dicionário de dados (requisito explícito).
+- `docs/` — memorial, evidências e o Excalidraw de design.
+- `.github/workflows/` — reservado ao diferencial de CI.
+
+### 4.3 Organização em camadas (backend)
+
+Ainda não implementei, mas a decisão está tomada: `routes` → `controller` → `service` → `repository`.
+
+- Controllers lidam com HTTP e validação de entrada (Zod).
+- Services concentram regra de negócio (dono, status, transições) **sem** conhecer Express.
+- Repositories isolam Prisma.
+
+Isso atende o critério de “uso adequado de camadas” e deixa os testes de regra mais próximos do service/API, sem misturar SQL no controller.
+
+### 4.4 Modelagem de dados (direção)
+
+Três entidades principais: `User`, `Category`, `ServiceRequest` (nome do model evita colisão com `Request` do Express/DOM). Categorias estão em tabela própria, pois dessa maneira, incluir categoria nova não exige alterar enum de código.
+
+Detalhamento de campos, índices e transições estão desenhados no Excalidraw e serão refletidos no schema Prisma.
+
+### 4.5 Autenticação e comunicação front ↔ back
+
+A comunicação entre frontend e backend segue o estilo REST com payloads em JSON, e todas as rotas da API ficam agrupadas sob o prefixo `/api` (por exemplo `/api/auth/login` e `/api/requests`). Esse prefixo separa com clareza o que é endpoint do que é página da aplicação: o nginx (ou o proxy do Vite em desenvolvimento) encaminha o que começa com `/api` para o Express e serve o restante como interface.
+
+Para a sessão, usarei um cookie chamado `token` com JWT marcado como `httpOnly`, de modo que o JavaScript do browser não consiga ler o valor e um XSS simples não exponha a credencial como ocorreria com `localStorage`. O logout consiste em limpar esse cookie, e um `GET /api/auth/me` permite ao front reconstituir o usuário logado depois de um F5.
+
+Padronizarei também o formato de erro (`error.code`, `error.message` e, quando fizer sentido, `details` por campo). Assim o frontend trata validação e regra de negócio com a mesma lógica, sem inventar um parser diferente para cada rota. Em desenvolvimento, o proxy do Vite para a API evita a maior parte da fricção de CORS e mantém cookie e origem no mesmo “site lógico”, o que facilita testar o fluxo de autenticação antes do ambiente containerizado.
+
+### 4.6 Estratégia de `.gitignore`
+
+Ignorei `node_modules`, artefatos de build (`dist`), cobertura, logs e **todos** os `.env` reais, mantendo versionáveis apenas `.env.example` / `.env.*.example`.
+
+---
+
+## 5. Decisões de negócio
+
+O PDF acerca do projeto não fecha algumas regras. Assumi o seguinte para não bloquear a implementação:
+
+
+| Ponto                    | Decisão                                                                                                          | Por quê                                                                                                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Visibilidade da listagem | Todo usuário autenticado vê todas as solicitações                                                                | A listagem pedida inclui coluna “Solicitante”, o que indica visão ampla, não “só as minhas”                                                                          |
+| Editar / excluir         | Apenas o solicitante, e só com status **Aberto**                                                                 | O edital restringe editar/excluir a solicitação aberta; limitar ao dono é controle mínimo de autorização (403 se não for dono; 409 se não estiver aberta)            |
+| Alterar status           | Qualquer autenticado                                                                                             | O enunciado não define papéis; a autorização mínima coerente é “estar logado”. Restringir a atendente/admin exigiria RBAC fora do pedido. Fica como melhoria futura. |
+| Transições               | `ABERTO → EM_ATENDIMENTO`; `EM_ATENDIMENTO → CONCLUIDO` ou de volta para`→ ABERTO`; `CONCLUIDO` é o estado final | Evita saltos incoerentes (ex.: Aberto → Concluído sem atendimento). Transição inválida retorna código HTTP 409                                                       |
+| Código exibido           | Derivado do `id` (`SOL-000042`)                                                                                  | Atende o campo “Código” na listagem sem denormalizar                                                                                                                 |
+| Filtro por período       | `YYYY-MM-DD`, dia inteiro em UTC-3                                                                               | Brasil não possui horário de verão desde 2019. Usar um fuso fixo é limitação consciente e documentada                                                                |
+| Paginação                | 10 por página (máx. 50)                                                                                          | Mesmo com pouco volume, evita listagem aberta e ensina contrato com `meta`                                                                                           |
+| Exclusão                 | Física (hard delete)                                                                                             | Escopo pequeno. soft delete/auditoria entram como melhorias futuras                                                                                                  |
+
+
+---
+
+## 6. Qualidade
+
+Ainda em definição prática (código não iniciado). Diretrizes já fechadas:
+
+- Validação de entrada com Zod na API; espelho no formulário do front.
+- Tratamento de erro centralizado e códigos HTTP coerentes (400/401/403/404/409/429/500).
+- Testes de integração nos fluxos de auth e regras de solicitação.
+- Segurança básica: hash de senha, cookie httpOnly, segredos em env, rotas autenticadas por padrão (exceto login e health).
+
+---
+
+## 7. Como executar
+
+Quando o Compose estiver pronto, o caminho principal será o descrito no README (clone → `.env` a partir do example → `docker compose up --build`). Enquanto isso não existe, esta seção fica como marcação.
+
+---
+
+## 8. Análise crítica
+
+### 8.1 Limitações (já previsíveis)
+
+- Sem papéis (qualquer autenticado altera status).
+- Sem histórico de mudança de status nem comentários/anexos.
+- Exclusão física.
+- Fuso fixo no filtro de datas.
+- Sem auto-cadastro nem recuperação de senha — o edital cobre login/sessão/logout, não gestão de contas. Usuários demo vêm do seed; cadastro e reset ficam como melhoria futura.
+- CI ainda não implementado.
+
+### 8.2 Melhorias futuras
+
+Perfis (solicitante/atendente/admin), auditoria de status, soft delete, anexos, notificações, prioridade/SLA, busca mais rica, sistema de cadastro de usuário.
+
+### 8.3 Requisitos que o enunciado poderia ter fechado
+
+Quem altera status; se a listagem é global ou por solicitante; se solicitação concluída pode reabrir; limites exatos de tamanho de texto.
+
+### 8.4 O que eu faria diferente em produção
+
+HTTPS obrigatório e cookie `secure`; segredos em gerenciador; logs estruturados; rate limit distribuído; ambientes staging/prod; backup e política de migração; autenticação corporativa (SSO) se o portal for interno de verdade.
+
+---
+
+## 9. Conclusão
+
+Até aqui fechei o **esqueleto do repositório**, a **stack**, as **regras de negócio omisas no PDF**, o **mapa visual** (modelagem, casos de uso, endpoints) e a **política de o que não versionar**. O próximo passo é subir o PostgreSQL via Compose e scaffoldar o backend TypeScript — onde estas decisões começam a virar código.
+
+---
+
+## 10. Registro de decisões (cronológico)
+
+### 30/09–01/10/2026 — Fundação do repositório e desenho
+
+- Li o edital e montei o plano de desenvolvimento em etapas diárias (prazo oficial 05/10; meta pessoal 04/10).
+- Criei o memorial como documento vivo e o board Excalidraw com três blocos apenas: modelagem, casos de uso e endpoints (evitei diagramar stack/containers no mesmo quadro para não misturar níveis).
+- Adotei monorepo com `backend/`, `frontend/`, `database/`, `docs/` e `.github/workflows/`.
+- Populei o `.gitignore` para excluir dependências, builds, cobertura, logs e `.env` reais, preservando examples.
+- Reservei GitHub Actions como diferencial opcional; não depende disso a entrega mínima.
+- Fechei a stack (TypeScript, Express, React/Vite, PostgreSQL, Prisma, Zod, JWT httpOnly, Docker Compose) e as regras de negócio da seção 5 deste memorial.
+
