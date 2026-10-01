@@ -25,10 +25,23 @@ export async function createUser({
   });
 }
 
+export const SEED_CATEGORIES = [
+  "TI",
+  "RH",
+  "Compras",
+  "Financeiro",
+  "Infraestrutura",
+] as const;
+
 export async function createCategory(name: string) {
   return prisma.category.create({
     data: { name },
   });
+}
+
+/** Insere as 5 categorias do seed de produção, ordenadas alfabeticamente na API. */
+export async function seedCategories() {
+  return Promise.all(SEED_CATEGORIES.map((name) => createCategory(name)));
 }
 
 export async function loginAs(user: { username: string; password: string }) {
