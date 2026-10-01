@@ -12,7 +12,7 @@ Este memorial registra o raciocínio por trás das escolhas técnicas e de negó
 
 O sistema permite que colaboradores autenticados registrem demandas internas (TI, RH, Compras, etc.), acompanhem o andamento e consultem indicadores simples. A entrega prevê backend, frontend, persistência em banco SQL, documentação de execução e este memorial.
 
-Organizei o documento assim: tecnologias e justificativas; decisões de arquitetura e de negócio; e um registro cronológico do que fui decidindo no caminho. Ainda não há código de aplicação — o trabalho até aqui foi de estrutura do repositório, desenho da solução e alinhamento do escopo.
+Organizei o documento assim: tecnologias e justificativas; decisões de arquitetura e de negócio; e um registro cronológico do que fui decidindo no caminho. Ao fim do **Dia 1** já existem backend Express com autenticação, Postgres via Compose, seed, Dockerfile da API e testes de integração do módulo auth; faltam os módulos de solicitações/dashboard e todo o frontend.
 
 ---
 
@@ -30,11 +30,11 @@ Stack definida na fase de planejamento.
 | Banco de dados       | PostgreSQL                               | 16 (Compose)                               |
 | ORM / acesso a dados | Prisma (+ scripts SQL entregues à parte) | **7.10.0** (+ `@prisma/adapter-pg`, `pg`)  |
 | Validação            | Zod                                      | Definida                                   |
-| Autenticação         | JWT em cookie `httpOnly` + bcrypt        | Definida                                   |
-| Estilização          | Tailwind CSS                             | Definida                                   |
-| Cliente HTTP         | axios (`withCredentials`)                | Definida                                   |
-| Testes (backend)     | Vitest + Supertest                       | Definida                                   |
-| Containerização      | Docker + Docker Compose                  | `db` no Compose; API/web depois            |
+| Autenticação         | JWT em cookie `httpOnly` + bcrypt        | **Implementado** (login/logout/me)         |
+| Estilização          | Tailwind CSS                             | Planejado (frontend)                       |
+| Cliente HTTP         | axios (`withCredentials`)                | Planejado (frontend)                       |
+| Testes (backend)     | Vitest + Supertest                       | **Auth:** 9 testes verdes                  |
+| Containerização      | Docker + Docker Compose                  | `db` + `api` (web depois)                  |
 | CI                   | GitHub Actions                           | Pasta reservada, workflow ainda não criado |
 
 
@@ -78,7 +78,7 @@ Stack definida na fase de planejamento.
 - **Vantagens em relação a alternativas:** SQL puro dá controle total, mas aumenta código repetitivo e risco de drift entre documentação e banco. TypeORM/Sequelize são opções, mas a tipagem do Prisma no fluxo TypeScript costuma ser mais previsível no dia a dia.
 - **Impacto:** ganho de velocidade e rastreabilidade de schema no Git.
 - **Por que Prisma 7 (e não 6 nem 8 RC):** tentei o caminho clássico (URL no `schema.prisma`, na linha do Prisma 6), mas a ferramenta/docs atuais e o language server do editor já tratam `url` no schema como inválido — a conexão de migrate vai para `prisma.config.ts`, e o `PrismaClient` em runtime recebe um **driver adapter** (`@prisma/adapter-pg` + `pg`). Fixei **7.10.0** (estável) nos dois pacotes (`prisma` e `@prisma/client`) para não misturar major. Evitei o **Prisma 8 RC**: o `prisma init` da RC instalou pastas de “skills” para agents (`.agents`, `.claude`, `.cursor`, `.devin`) e um `postinstall` que não agrega ao produto; para um desafio com prazo curto, RC é risco desnecessário.
-- **Como ficou no projeto:** `prisma/schema.prisma` só declara `provider = "postgresql"`; `prisma.config.ts` lê `DATABASE_URL`; `src/database/prisma.ts` instancia o client com o adapter. Quem for rodar local precisa de Node na faixa do `engines` do backend.
+- **Como ficou no projeto:** `prisma/schema.prisma` só declara `provider = "postgresql"`; `prisma.config.ts` lê `DATABASE_URL`; `src/database/prisma.ts` instancia o client com o adapter. No **Dockerfile**, o `prisma generate` do build precisa que `DATABASE_URL` exista ao carregar o config — usei um placeholder no stage da imagem; a URL real (`@db:5432`) vem do Compose em runtime. Quem for rodar local precisa de Node na faixa do `engines` do backend.
 
 ### 3.6 Zod
 
@@ -89,7 +89,7 @@ Stack definida na fase de planejamento.
 
 ### 3.7 JWT em cookie httpOnly + bcrypt
 
-- **Motivo da escolha:** o edital pede login, sessão e logout, com acesso só para autenticados. JWT com expiração modela a sessão sem armazenar estado de sessão no servidor neste escopo; `httpOnly` impede leitura do token via JavaScript no browser, eunquanto o bcrypt cobre o hash das senhas.
+- **Motivo da escolha:** o edital pede login, sessão e logout, com acesso só para autenticados. JWT com expiração modela a sessão sem armazenar estado de sessão no servidor neste escopo; `httpOnly` impede leitura do token via JavaScript no browser, e o bcrypt cobre o hash das senhas.
 - **Benefícios para o cenário:** logout = limpar cookie; `GET /auth/me` restaura a sessão após F5; a API continua stateless em relação à sessão.
 - **Vantagens em relação a alternativas:** sessão server-side (Redis/memória) seria mais “clássica”, mas adiciona infraestrutura. Token só no `Authorization` header funciona, porém o front precisaria guardar o JWT em lugar acessível ao JS. OAuth/SSO seria excesso para usuários demo em seed.
 - **Impacto:** implementação enxuta e alinhada a segurança básica pedida na avaliação. Em produção eu endureceria HTTPS, flag `secure` e rotação/refresh.
@@ -113,14 +113,14 @@ Stack definida na fase de planejamento.
 - **Motivo da escolha:** regras de negócio (dono, status Aberto, transições) são exatamente o tipo de coisa que quebra sem teste. Quero poucos testes, nos fluxos que importam, contra um Postgres real de teste.
 - **Benefícios para o cenário:** Vitest é rápido e familiar a quem já viu Jest, enquanto Supertest exercita a API HTTP de ponta a ponta (cookie, status code, body de erro).
 - **Vantagens em relação a alternativas:** Jest também serviria, mas Vitest integra melhor com ESM/Vite e é mais leve de configurar hoje. Testes só unitários com mock de Prisma não pegariam regressão de middleware e serialização, por isso priorizo integração na API.
-- **Impacto:** confiança para refatorar services a custo de manter banco/schema de teste no Compose.
+- **Impacto:** confiança para refatorar auth com regressão rápida. Configurei Vitest com `fileParallelism: false`, schema Postgres `test` (isolado do `public` de desenvolvimento), truncate a cada teste e helpers (`createUser`, `loginAs`).
 
 ### 3.11 Docker + Docker Compose
 
 - **Motivo da escolha:** o edital exige execução sem adaptações. Compose com `db`, `api` e `web` é o caminho mais honesto para quem for avaliar clonar e subir.
 - **Benefícios para o cenário:** mesmo Postgres para todos; migrations/seed no start da API; frontend estático atrás de nginx com proxy `/api`.
 - **Vantagens em relação a alternativas:** instruções só com “instale Node 22, Postgres 16, configure PATH…” falham em máquinas diferente.
-- **Impacto:** investir em conteinerização no dia 1 evita surpresa na entrega. Dockerfile multi-stage e variáveis de ambiente precisam estar corretos desde o começo.
+- **Impacto:** investir em conteinerização no dia 1 evita surpresa na entrega. Dockerfile multi-stage da API já aplica migrate + seed no start. No host WSL a porta 5432 já estava ocupada por outro Postgres — mapeei o Compose para **5433:5432** e ajustei o `DATABASE_URL` local; dentro da rede Docker a API continua falando com `db:5432`.
 
 ### 3.12 GitHub Actions (diferencial, ainda não implementado)
 
@@ -151,15 +151,15 @@ Pastas adicionais já criadas:
 - `docs/` — memorial, evidências e o Excalidraw de design.
 - `.github/workflows/` — reservado ao diferencial de CI.
 
-### 4.3 Organização em camadas (backend)
+### 4.3 Organização em módulos e camadas (backend)
 
-Ainda não implementei, mas a decisão está tomada: `routes` → `controller` → `service` → `repository`.
+O código de domínio fica em `modules/` (por feature). Dentro de cada módulo mantenho a sequência **routes → controller → service** (repository entra quando a persistência do módulo crescer). Auth já segue esse padrão; middlewares transversais (`authenticate`, `errorHandler`, rate limit) ficam em `middlewares/`.
 
 - Controllers lidam com HTTP e validação de entrada (Zod).
-- Services concentram regra de negócio (dono, status, transições) **sem** conhecer Express.
-- Repositories isolam Prisma.
+- Services concentram regra de negócio **sem** conhecer Express.
+- Prisma fica encapsulado no service/helpers de dados por enquanto.
 
-Isso atende o critério de “uso adequado de camadas” e deixa os testes de regra mais próximos do service/API, sem misturar SQL no controller.
+Isso atende “uso adequado de camadas” sem espalhar pastas globais `controllers/` / `services/` no início do projeto.
 
 ### 4.4 Modelagem de dados (direção)
 
@@ -169,11 +169,11 @@ Detalhamento de campos, índices e transições está no Excalidraw e já foi re
 
 ### 4.5 Autenticação e comunicação front ↔ back
 
-A comunicação entre frontend e backend segue o estilo REST com payloads em JSON, e todas as rotas da API ficam agrupadas sob o prefixo `/api` (por exemplo `/api/auth/login` e `/api/requests`). Esse prefixo separa com clareza o que é endpoint do que é página da aplicação: o nginx (ou o proxy do Vite em desenvolvimento) encaminha o que começa com `/api` para o Express e serve o restante como interface.
+A comunicação entre frontend e backend segue o estilo REST com payloads em JSON, e as rotas da API ficam sob o prefixo `/api` (por exemplo `/api/auth/login`). Esse prefixo separa endpoint de página: o nginx (ou o proxy do Vite) encaminha `/api` para o Express.
 
-Para a sessão, usarei um cookie chamado `token` com JWT marcado como `httpOnly`, de modo que o JavaScript do browser não consiga ler o valor e um XSS simples não exponha a credencial como ocorreria com `localStorage`. O logout consiste em limpar esse cookie, e um `GET /api/auth/me` permite ao front reconstituir o usuário logado depois de um F5.
+A sessão **já está implementada** no backend: cookie `token` com JWT `httpOnly`, `sameSite: 'lax'` e `secure` configurável; logout limpa o cookie; `GET /api/auth/me` reconstitui o usuário. Mensagens de falha de login são genéricas (“Usuário ou senha inválidos”) para não distinguir usuário inexistente de senha errada. Há rate limit no login (10 / 15 min), desligado em `NODE_ENV=test`.
 
-Padronizarei também o formato de erro (`error.code`, `error.message` e, quando fizer sentido, `details` por campo). Assim o frontend trata validação e regra de negócio com a mesma lógica, sem inventar um parser diferente para cada rota. Em desenvolvimento, o proxy do Vite para a API evita a maior parte da fricção de CORS e mantém cookie e origem no mesmo “site lógico”, o que facilita testar o fluxo de autenticação antes do ambiente containerizado.
+Erros seguem formato único (`error.code`, `error.message`, `details` opcional) via `errorHandler` centralizado. O frontend ainda não consome a API; quando existir, o proxy do Vite deve facilitar cookie e origem no mesmo site lógico.
 
 ### 4.6 Estratégia de `.gitignore`
 
@@ -202,18 +202,24 @@ O PDF acerca do projeto não fecha algumas regras. Assumi o seguinte para não b
 
 ## 6. Qualidade
 
-Ainda em definição prática (código não iniciado). Diretrizes já fechadas:
+Diretrizes em uso no backend:
 
-- Validação de entrada com Zod na API; espelho no formulário do front.
-- Tratamento de erro centralizado e códigos HTTP coerentes (400/401/403/404/409/429/500).
-- Testes de integração nos fluxos de auth e regras de solicitação.
-- Segurança básica: hash de senha, cookie httpOnly, segredos em env, rotas autenticadas por padrão (exceto login e health).
+- Validação Zod nas entradas do auth; erros 400 com `details` por campo.
+- `AppError` + `errorHandler` (Zod / AppError / 500 genérico sem stack na resposta).
+- Testes de integração do auth (9 casos) com Vitest + Supertest + Postgres schema `test`.
+- Segurança básica já aplicada no auth: bcrypt, cookie httpOnly, mensagem genérica de login, rate limit, `helmet`, CORS com credentials.
 
 ---
 
 ## 7. Como executar
 
-Quando o Compose estiver pronto, o caminho principal será o descrito no README (clone → `.env` a partir do example → `docker compose up --build`). Enquanto isso não existe, esta seção fica como marcação.
+**Dia a dia (backend):** `docker compose up -d db` e, em `backend/`, `npm run dev` (hot reload; `DATABASE_URL` em `localhost:5433`).
+
+**Entrega / smoke Docker:** na raiz, `cp .env.example .env` (se ainda não houver) e `docker compose up --build` — sobe `db` + `api` (migrate + seed no start da API). Health: `GET http://localhost:3333/api/health`.
+
+Credenciais demo (seed): `ana.silva` / `senha123` e `carlos.souza` / `senha123`.
+
+O README completo (front + web no Compose) ainda será escrito na fase de documentação.
 
 ---
 
@@ -244,7 +250,7 @@ HTTPS obrigatório e cookie `secure`; segredos em gerenciador; logs estruturados
 
 ## 9. Conclusão
 
-Até aqui fechei o **esqueleto do repositório**, a **stack** (com Prisma 7.10 e Node na faixa exigida pela ORM), as **regras de negócio omisas no PDF**, o **mapa visual**, o **Compose do Postgres**, o **scaffold inicial do backend** (`env` com Zod, `schema.prisma`, client com adapter) e a **política de o que não versionar**. O próximo passo é migration/seed e a aplicação Express (auth e demais módulos).
+No **Dia 1** fechei fundação e autenticação do backend: monorepo, Prisma 7.10, Compose (`db` + `api`), seed idempotente, Express com erros centralizados, módulo `auth` (login/logout/me, JWT em cookie, rate limit) e bateria de testes de integração. O próximo passo é o backend de categorias, solicitações e dashboard (Dia 2), depois o frontend.
 
 ---
 
@@ -267,4 +273,14 @@ Até aqui fechei o **esqueleto do repositório**, a **stack** (com Prisma 7.10 e
 - Adotei **Prisma 7.10.0** estável: URL em `prisma.config.ts`, client com `@prisma/adapter-pg` + `pg` em `src/database/prisma.ts`; `schema.prisma` só com provider e models.
 - Exigi Node na faixa do Prisma 7 (20.19+ / 22.12+ / 24+) porque o install falhava em 20.18.2; documentei isso em `engines` no `package.json` do backend.
 - Motivo resumido: alinhar à API oficial da v7, evitar RC instável e ter ambiente reproduzível para quem clonar o repo.
+
+### 01/10/2026 — Fim do dia (API, Docker, auth, testes)
+
+- Migration inicial + seed idempotente (categorias, `ana.silva` / `carlos.souza`, solicitações de exemplo).
+- Express base: `app.ts` / `server.ts` separados, `helmet`, CORS, cookie parser, `/api/health`, `notFound` + `errorHandler`.
+- Porta do Postgres no host: **5433** (5432 já ocupada no ambiente); na rede Compose a API usa `@db:5432`.
+- Dockerfile multi-stage da API; Compose com serviço `api` (`depends_on` + `service_healthy`). Placeholder de `DATABASE_URL` no build por causa do Prisma 7.
+- Módulo auth: schemas Zod, service (mensagem genérica de credencial), cookie JWT, `authenticate`, rate limit no login, rotas `/api/auth/*`.
+- Vitest configurado (`fileParallelism: false`); `.env.test` com schema `test`; 9 testes de auth verdes (login, me, logout, cookie inválido/expirado).
+- Fluxo de trabalho: desenvolver com `db` + `npm run dev`; validar entrega com `docker compose up --build`.
 
