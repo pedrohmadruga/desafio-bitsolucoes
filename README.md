@@ -72,4 +72,5 @@ Sobe `db` + `api` (migrate e seed no start). Não use junto com `npm run dev` na
 ## Documentação
 
 - [Memorial técnico](docs/memorial-tecnico.md) — decisões e justificativas
+- [API](docs/api.md) — endpoints e exemplos (`docs/requests.http` para REST Client)
 - [System design (Excalidraw)](docs/system-design.excalidraw)

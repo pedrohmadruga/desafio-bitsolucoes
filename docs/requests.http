@@ -1,0 +1,65 @@
+@baseUrl = http://localhost:3333
+@contentType = application/json
+
+### Health
+GET {{baseUrl}}/api/health
+
+### Login (guarde o cookie token)
+# @name login
+POST {{baseUrl}}/api/auth/login
+Content-Type: {{contentType}}
+
+{
+  "username": "ana.silva",
+  "password": "senha123"
+}
+
+### Me
+GET {{baseUrl}}/api/auth/me
+
+### Logout
+POST {{baseUrl}}/api/auth/logout
+
+### Categories
+GET {{baseUrl}}/api/categories
+
+### List requests
+GET {{baseUrl}}/api/requests?page=1&pageSize=10&status=ABERTO&q=impressora&from=2026-09-01&to=2026-09-30
+
+### Create request
+# @name createRequest
+POST {{baseUrl}}/api/requests
+Content-Type: {{contentType}}
+
+{
+  "title": "Impressora sem toner",
+  "description": "A impressora do 2º andar parou de imprimir.",
+  "categoryId": 1
+}
+
+### Get request by id
+GET {{baseUrl}}/api/requests/1
+
+### Update request
+PUT {{baseUrl}}/api/requests/1
+Content-Type: {{contentType}}
+
+{
+  "title": "Impressora sem toner (atualizado)",
+  "description": "A impressora do 2º andar parou de imprimir. Prioridade alta.",
+  "categoryId": 1
+}
+
+### Change status
+PATCH {{baseUrl}}/api/requests/1/status
+Content-Type: {{contentType}}
+
+{
+  "status": "EM_ATENDIMENTO"
+}
+
+### Delete request
+DELETE {{baseUrl}}/api/requests/1
+
+### Dashboard
+GET {{baseUrl}}/api/dashboard

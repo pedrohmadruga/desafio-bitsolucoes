@@ -28,6 +28,22 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     return;
   }
 
+  // body-parser / express.json: payload acima do limite
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "type" in err &&
+    (err as { type?: string }).type === "entity.too.large"
+  ) {
+    res.status(413).json({
+      error: {
+        code: "PAYLOAD_TOO_LARGE",
+        message: "Corpo da requisição excede o limite permitido",
+      },
+    });
+    return;
+  }
+
   console.error(err);
   res.status(500).json({
     error: {

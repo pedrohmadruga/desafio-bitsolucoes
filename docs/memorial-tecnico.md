@@ -204,10 +204,12 @@ O PDF acerca do projeto não fecha algumas regras. Assumi o seguinte para não b
 
 Diretrizes em uso no backend:
 
-- Validação Zod nas entradas do auth; erros 400 com `details` por campo.
-- `AppError` + `errorHandler` (Zod / AppError / 500 genérico sem stack na resposta).
-- Testes de integração do auth (9 casos) com Vitest + Supertest + Postgres schema `test`.
-- Segurança básica já aplicada no auth: bcrypt, cookie httpOnly, mensagem genérica de login, rate limit, `helmet`, CORS com credentials.
+- Validação Zod nas entradas; erros 400 com `details` por campo.
+- `AppError` + `errorHandler` (Zod / AppError / payload grande / 500 genérico sem stack na resposta).
+- Testes de integração (auth, categories, requests, dashboard) com Vitest + Supertest + Postgres schema `test`.
+- Segurança básica: bcrypt, cookie httpOnly, mensagem genérica de login, rate limit no login, `helmet`, CORS restrito a `CORS_ORIGIN`, `express.json({ limit: '100kb' })`.
+- Endpoints protegidos por `authenticate`, exceto `GET /api/health` e `POST /api/auth/login`.
+- Documentação de endpoints em `docs/api.md` e `docs/requests.http`.
 
 ---
 
