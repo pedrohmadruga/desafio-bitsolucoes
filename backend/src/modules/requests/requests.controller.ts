@@ -1,6 +1,7 @@
 import type { Request, RequestHandler } from "express";
 import { UnauthorizedError } from "../../shared/errors";
 import {
+  changeStatusSchema,
   createRequestSchema,
   idParamSchema,
   listRequestsQuerySchema,
@@ -47,4 +48,11 @@ export const remove: RequestHandler = async (req, res) => {
   const { id } = idParamSchema.parse(req.params);
   await requestsService.remove(id, userId);
   res.status(204).send();
+};
+
+export const changeStatus: RequestHandler = async (req, res) => {
+  const { id } = idParamSchema.parse(req.params);
+  const { status } = changeStatusSchema.parse(req.body);
+  const request = await requestsService.changeStatus(id, status);
+  res.status(200).json({ request });
 };

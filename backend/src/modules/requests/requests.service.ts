@@ -13,6 +13,7 @@ import type {
   ListRequestsQuery,
   UpdateRequestInput,
 } from "./requests.schemas";
+import { canTransition } from "./status-rules";
 
 async function assertCategoryExists(categoryId: number) {
   const category = await prisma.category.findUnique({
@@ -129,4 +130,22 @@ export async function remove(id: number, userId: number) {
     "Só é possível excluir solicitações com status Aberto",
     "REQUEST_NOT_OPEN",
   );
+}
+
+export async function changeStatus(id: number, newStatus: RequestStatus) {
+  const existing = await requestsRepository.findById(id);
+
+  if (!existing) {
+    throw new NotFoundError("Solicitação não encontrada");
+  }
+
+  if (!canTransition(existing.status, newStatus)) {
+    throw new ConflictError(
+      `Não é possível ir de ${existing.status} para ${newStatus}`,
+      "INVALID_STATUS_TRANSITION",
+    );
+  }
+
+  const updated = await requestsRepository.updateStatus(id, newStatus);
+  return toRequestResponse(updated);
 }

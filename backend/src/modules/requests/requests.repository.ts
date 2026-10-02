@@ -95,6 +95,14 @@ export async function update(id: number, data: UpdateRequestData) {
   });
 }
 
+export async function updateStatus(id: number, status: RequestStatus) {
+  return prisma.serviceRequest.update({
+    where: { id },
+    data: { status },
+    include: requestInclude,
+  });
+}
+
 export async function deleteById(id: number) {
   return prisma.serviceRequest.delete({
     where: { id },

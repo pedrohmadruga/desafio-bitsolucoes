@@ -601,3 +601,157 @@ describe("DELETE /api/requests/:id", () => {
     expect(res.body.error.code).toBe("REQUEST_NOT_OPEN");
   });
 });
+
+describe("PATCH /api/requests/:id/status", () => {
+  it("ABERTO → EM_ATENDIMENTO ok", async () => {
+    const user = await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const created = await createServiceRequest({
+      title: "Abrir atendimento",
+      categoryId: category.id,
+      requesterId: user.id,
+      status: "ABERTO",
+    });
+
+    const res = await agent
+      .patch(`/api/requests/${created.id}/status`)
+      .send({ status: "EM_ATENDIMENTO" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.request.status).toBe("EM_ATENDIMENTO");
+  });
+
+  it("EM_ATENDIMENTO → CONCLUIDO ok", async () => {
+    const user = await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const created = await createServiceRequest({
+      title: "Concluir atendimento",
+      categoryId: category.id,
+      requesterId: user.id,
+      status: "EM_ATENDIMENTO",
+    });
+
+    const res = await agent
+      .patch(`/api/requests/${created.id}/status`)
+      .send({ status: "CONCLUIDO" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.request.status).toBe("CONCLUIDO");
+  });
+
+  it("EM_ATENDIMENTO → ABERTO ok", async () => {
+    const user = await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const created = await createServiceRequest({
+      title: "Reabrir solicitação",
+      categoryId: category.id,
+      requesterId: user.id,
+      status: "EM_ATENDIMENTO",
+    });
+
+    const res = await agent
+      .patch(`/api/requests/${created.id}/status`)
+      .send({ status: "ABERTO" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.request.status).toBe("ABERTO");
+  });
+
+  it("ABERTO → CONCLUIDO → 409", async () => {
+    const user = await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const created = await createServiceRequest({
+      title: "Pulo inválido",
+      categoryId: category.id,
+      requesterId: user.id,
+      status: "ABERTO",
+    });
+
+    const res = await agent
+      .patch(`/api/requests/${created.id}/status`)
+      .send({ status: "CONCLUIDO" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("INVALID_STATUS_TRANSITION");
+    expect(res.body.error.message).toContain("ABERTO");
+    expect(res.body.error.message).toContain("CONCLUIDO");
+  });
+
+  it("CONCLUIDO → qualquer → 409", async () => {
+    const user = await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const created = await createServiceRequest({
+      title: "Já concluída",
+      categoryId: category.id,
+      requesterId: user.id,
+      status: "CONCLUIDO",
+    });
+
+    for (const status of ["ABERTO", "EM_ATENDIMENTO", "CONCLUIDO"] as const) {
+      const res = await agent
+        .patch(`/api/requests/${created.id}/status`)
+        .send({ status });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe("INVALID_STATUS_TRANSITION");
+      expect(res.body.error.message).toMatch(/Não é possível ir de CONCLUIDO/);
+    }
+  });
+
+  it("status inválido → 400", async () => {
+    const user = await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const created = await createServiceRequest({
+      title: "Status inválido no body",
+      categoryId: category.id,
+      requesterId: user.id,
+      status: "ABERTO",
+    });
+
+    const res = await agent
+      .patch(`/api/requests/${created.id}/status`)
+      .send({ status: "CANCELADO" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("após concluir, tentar editar → 409", async () => {
+    const user = await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const created = await createServiceRequest({
+      title: "Vai ser concluída",
+      categoryId: category.id,
+      requesterId: user.id,
+      status: "EM_ATENDIMENTO",
+    });
+
+    const conclude = await agent
+      .patch(`/api/requests/${created.id}/status`)
+      .send({ status: "CONCLUIDO" });
+    expect(conclude.status).toBe(200);
+
+    const edit = await agent.put(`/api/requests/${created.id}`).send({
+      title: "Não pode editar concluída",
+      description: "Descrição que não deve ser aceita após conclusão.",
+      categoryId: category.id,
+    });
+
+    expect(edit.status).toBe(409);
+    expect(edit.body.error.code).toBe("REQUEST_NOT_OPEN");
+  });
+});
