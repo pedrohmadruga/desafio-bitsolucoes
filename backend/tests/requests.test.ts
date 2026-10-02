@@ -402,3 +402,202 @@ describe("GET /api/requests (listagem)", () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe("PUT /api/requests/:id", () => {
+  it("dono edita solicitação aberta → 200 e updatedAt muda", async () => {
+    const user = await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const otherCategory = await createCategory("RH");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const created = await createServiceRequest({
+      title: "Título original",
+      description: "Descrição original com tamanho suficiente.",
+      categoryId: category.id,
+      requesterId: user.id,
+      status: "ABERTO",
+    });
+
+    // pequena pausa para garantir diferença de timestamp no updatedAt
+    await new Promise((r) => setTimeout(r, 20));
+
+    const res = await agent.put(`/api/requests/${created.id}`).send({
+      title: "Título atualizado",
+      description: "Descrição atualizada com tamanho suficiente.",
+      categoryId: otherCategory.id,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.request).toMatchObject({
+      id: created.id,
+      title: "Título atualizado",
+      description: "Descrição atualizada com tamanho suficiente.",
+      category: { id: otherCategory.id, name: "RH" },
+      status: "ABERTO",
+    });
+    expect(new Date(res.body.request.updatedAt).getTime()).toBeGreaterThan(
+      created.updatedAt.getTime(),
+    );
+  });
+
+  it("outro usuário tenta editar → 403", async () => {
+    const owner = await createUser({ username: "ana.silva", password: "senha123" });
+    await createUser({ username: "carlos.souza", password: "senha123" });
+    const category = await createCategory("TI");
+
+    const created = await createServiceRequest({
+      title: "Só da Ana",
+      categoryId: category.id,
+      requesterId: owner.id,
+      status: "ABERTO",
+    });
+
+    const agent = await loginAs({ username: "carlos.souza", password: "senha123" });
+    const res = await agent.put(`/api/requests/${created.id}`).send({
+      title: "Tentativa do Carlos",
+      description: "Descrição alterada sem ser o dono da solicitação.",
+      categoryId: category.id,
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("editar solicitação em atendimento → 409 REQUEST_NOT_OPEN", async () => {
+    const user = await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const created = await createServiceRequest({
+      title: "Em atendimento",
+      categoryId: category.id,
+      requesterId: user.id,
+      status: "EM_ATENDIMENTO",
+    });
+
+    const res = await agent.put(`/api/requests/${created.id}`).send({
+      title: "Não deveria editar",
+      description: "Descrição que não deve ser aceita nesta situação.",
+      categoryId: category.id,
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("REQUEST_NOT_OPEN");
+  });
+
+  it("editar solicitação concluída → 409 REQUEST_NOT_OPEN", async () => {
+    const user = await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const created = await createServiceRequest({
+      title: "Concluída",
+      categoryId: category.id,
+      requesterId: user.id,
+      status: "CONCLUIDO",
+    });
+
+    const res = await agent.put(`/api/requests/${created.id}`).send({
+      title: "Não deveria editar",
+      description: "Descrição que não deve ser aceita nesta situação.",
+      categoryId: category.id,
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("REQUEST_NOT_OPEN");
+  });
+
+  it("body inválido → 400", async () => {
+    const user = await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const created = await createServiceRequest({
+      title: "Válida",
+      categoryId: category.id,
+      requesterId: user.id,
+    });
+
+    const res = await agent.put(`/api/requests/${created.id}`).send({
+      title: "ab",
+      description: "curta",
+      categoryId: category.id,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("inexistente → 404", async () => {
+    await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const res = await agent.put("/api/requests/9999").send({
+      title: "Título válido longo",
+      description: "Descrição válida com tamanho suficiente.",
+      categoryId: category.id,
+    });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe("NOT_FOUND");
+  });
+});
+
+describe("DELETE /api/requests/:id", () => {
+  it("dono exclui aberta → 204 e depois GET → 404", async () => {
+    const user = await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const created = await createServiceRequest({
+      title: "Para excluir",
+      categoryId: category.id,
+      requesterId: user.id,
+      status: "ABERTO",
+    });
+
+    const del = await agent.delete(`/api/requests/${created.id}`);
+    expect(del.status).toBe(204);
+
+    const get = await agent.get(`/api/requests/${created.id}`);
+    expect(get.status).toBe(404);
+  });
+
+  it("outro usuário tenta excluir → 403", async () => {
+    const owner = await createUser({ username: "ana.silva", password: "senha123" });
+    await createUser({ username: "carlos.souza", password: "senha123" });
+    const category = await createCategory("TI");
+
+    const created = await createServiceRequest({
+      title: "Não é do Carlos",
+      categoryId: category.id,
+      requesterId: owner.id,
+      status: "ABERTO",
+    });
+
+    const agent = await loginAs({ username: "carlos.souza", password: "senha123" });
+    const res = await agent.delete(`/api/requests/${created.id}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("excluir solicitação não aberta → 409", async () => {
+    const user = await createUser({ username: "ana.silva", password: "senha123" });
+    const category = await createCategory("TI");
+    const agent = await loginAs({ username: "ana.silva", password: "senha123" });
+
+    const created = await createServiceRequest({
+      title: "Já em atendimento",
+      categoryId: category.id,
+      requesterId: user.id,
+      status: "EM_ATENDIMENTO",
+    });
+
+    const res = await agent.delete(`/api/requests/${created.id}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("REQUEST_NOT_OPEN");
+  });
+});

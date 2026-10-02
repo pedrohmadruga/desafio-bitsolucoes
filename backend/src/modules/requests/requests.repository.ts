@@ -100,3 +100,15 @@ export async function deleteById(id: number) {
     where: { id },
   });
 }
+
+export async function deleteIfOpenOwned(id: number, requesterId: number) {
+  const result = await prisma.serviceRequest.deleteMany({
+    where: {
+      id,
+      requesterId,
+      status: "ABERTO",
+    },
+  });
+
+  return result.count;
+}

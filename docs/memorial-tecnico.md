@@ -233,6 +233,7 @@ O README completo (front + web no Compose) ainda será escrito na fase de docume
 - Fuso fixo no filtro de datas.
 - Sem auto-cadastro nem recuperação de senha — o edital cobre login/sessão/logout, não gestão de contas. Usuários demo vêm do seed; cadastro e reset ficam como melhoria futura.
 - CI ainda não implementado.
+- A exclusão de solicitação usa `deleteMany` com `id` + `requesterId` + `status = ABERTO` numa única operação, o que reduz (mas não elimina por completo em todos os caminhos) a janela de corrida entre “checar se ainda está aberta” e “apagar”. Na edição ainda faço busca + validação + `update`; dois pedidos concorrentes (ex.: alguém muda o status enquanto o dono edita) ainda podem gerar condição de corrida rara. Em produção eu usaria `updateMany` com o mesmo filtro composto ou bloqueio otimista (`updatedAt` / versão).
 
 ### 8.2 Melhorias futuras
 

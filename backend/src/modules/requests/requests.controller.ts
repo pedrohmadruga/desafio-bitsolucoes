@@ -4,6 +4,7 @@ import {
   createRequestSchema,
   idParamSchema,
   listRequestsQuerySchema,
+  updateRequestSchema,
 } from "./requests.schemas";
 import * as requestsService from "./requests.service";
 
@@ -31,4 +32,19 @@ export const getById: RequestHandler = async (req, res) => {
   const { id } = idParamSchema.parse(req.params);
   const request = await requestsService.getById(id);
   res.status(200).json({ request });
+};
+
+export const update: RequestHandler = async (req, res) => {
+  const userId = getAuthenticatedUserId(req);
+  const { id } = idParamSchema.parse(req.params);
+  const dto = updateRequestSchema.parse(req.body);
+  const request = await requestsService.update(id, userId, dto);
+  res.status(200).json({ request });
+};
+
+export const remove: RequestHandler = async (req, res) => {
+  const userId = getAuthenticatedUserId(req);
+  const { id } = idParamSchema.parse(req.params);
+  await requestsService.remove(id, userId);
+  res.status(204).send();
 };

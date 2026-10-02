@@ -9,3 +9,5 @@ requestsRoutes.use(authenticate);
 requestsRoutes.post("/", requestsController.create);
 requestsRoutes.get("/", requestsController.list);
 requestsRoutes.get("/:id", requestsController.getById);
+requestsRoutes.put("/:id", requestsController.update);
+requestsRoutes.delete("/:id", requestsController.remove);
